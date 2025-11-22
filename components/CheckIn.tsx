@@ -74,7 +74,7 @@ export const CheckIn: React.FC<CheckInProps> = ({ initialDate, records, onClose,
         {/* Header - Fixed at Top of Modal */}
         <div 
           className="flex-none px-4 pb-4 flex justify-between items-center bg-white shadow-sm z-10"
-          style={{ paddingTop: 'calc(env(safe-area-inset-top) + 46px)' }}
+          style={{ paddingTop: 'calc(env(safe-area-inset-top) + 31px)' }}
         >
           <button onClick={onClose} className="p-2 rounded-full hover:bg-gray-100 transition-colors">
             <X size={24} className="text-gray-500" />
@@ -230,3 +230,4 @@ export const CheckIn: React.FC<CheckInProps> = ({ initialDate, records, onClose,
     </div>
   );
 };
+    
