@@ -1,3 +1,4 @@
+
 import React, { useState, useEffect } from 'react';
 import { INITIAL_GOAL, INITIAL_RECORDS } from './constants';
 import { DailyRecord, UserGoal, CyclePhase } from './types';
@@ -168,7 +169,7 @@ export default function App() {
   return (
     <div className="max-w-md mx-auto min-h-screen bg-gray-50 text-gray-900 font-sans relative overflow-hidden">
       
-      <div className="pt-2">
+      <div className="pt-[60px]">
         {activeTab === 'dashboard' && (
           <Dashboard 
             todayRecord={todayRecord}

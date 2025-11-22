@@ -12,9 +12,7 @@ import {
   TrendingDown, 
   ChevronRight,
   Edit2,
-  X,
-  Droplets,
-  Dumbbell
+  X
 } from 'lucide-react';
 import confetti from 'canvas-confetti';
 
@@ -117,6 +115,13 @@ export const Dashboard: React.FC<DashboardProps> = ({
   const handleConfirmCycleUpdate = () => {
     onUpdateCycle(tempPhase, tempDay);
     setShowCycleEdit(false);
+  };
+
+  // Helper to format start time
+  const formatStartTime = (timestamp: number | null) => {
+    if (!timestamp) return '--:--';
+    const date = new Date(timestamp);
+    return date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', hour12: false });
   };
 
   if (!todayRecord) return <div className="p-4">Loading today's plan...</div>;
@@ -288,7 +293,7 @@ export const Dashboard: React.FC<DashboardProps> = ({
         </div>
       </div>
 
-      {/* 4. 16+8 Timer - Cumulative Count */}
+      {/* 4. 16+8 Timer - Cumulative Count with Timestamp */}
       <div className="px-4">
         <Card className="bg-gray-900 text-white">
           <div className="flex items-center justify-between">
@@ -296,9 +301,18 @@ export const Dashboard: React.FC<DashboardProps> = ({
               <div className={`p-2 rounded-lg ${fastingState.isFasting ? 'bg-blue-500/20 text-blue-400' : 'bg-orange-500/20 text-orange-400'}`}>
                  {fastingState.isFasting ? <Timer size={24} /> : <Utensils size={24} />}
               </div>
-              <div>
-                <p className="text-xs text-gray-400 font-medium">{fastingState.isFasting ? 'TIME FASTED' : 'TIME EATING'}</p>
-                <p className="text-xl font-mono tracking-widest">{elapsedTime}</p>
+              <div className="flex flex-col justify-center">
+                <p className="text-[10px] text-gray-400 font-medium mb-0.5 uppercase tracking-wider leading-none">
+                  {fastingState.isFasting ? 'Time Fasted' : 'Time Eating'}
+                </p>
+                <div className="flex flex-col">
+                  <p className="text-xl font-mono tracking-widest leading-none">
+                    {elapsedTime}
+                  </p>
+                  <p className="text-[10px] text-gray-500 font-medium mt-0.5 leading-none">
+                    Since {formatStartTime(fastingState.startTime)}
+                  </p>
+                </div>
               </div>
             </div>
             <button 
