@@ -143,7 +143,7 @@ export const Dashboard: React.FC<DashboardProps> = ({
   return (
     <div className="space-y-6 pb-24">
       {/* 1. Top Status Bar (Dynamic Color) */}
-      <div className={`${phaseStyle.color} ${phaseStyle.textColor} pl-9 pr-6 pt-12 pt-safe pb-8 rounded-b-[2.5rem] shadow-sm -mx-4 -mt-4 relative overflow-hidden transition-colors duration-500`}>
+      <div className={`${phaseStyle.color} ${phaseStyle.textColor} pl-9 pr-6 pt-[38px] pb-8 rounded-b-[2.5rem] shadow-sm -mx-4 -mt-4 relative overflow-hidden transition-colors duration-500`}>
         <div className="absolute top-0 right-0 opacity-10 transform translate-x-10 -translate-y-10">
            <Activity size={180} />
         </div>
@@ -301,18 +301,17 @@ export const Dashboard: React.FC<DashboardProps> = ({
               <div className={`p-2 rounded-lg ${fastingState.isFasting ? 'bg-blue-500/20 text-blue-400' : 'bg-orange-500/20 text-orange-400'}`}>
                  {fastingState.isFasting ? <Timer size={24} /> : <Utensils size={24} />}
               </div>
-              <div className="flex flex-col justify-center">
-                <p className="text-[10px] text-gray-400 font-medium mb-0.5 uppercase tracking-wider leading-none">
+              {/* Flattened text structure with exact height alignment */}
+              <div className="flex flex-col h-10 justify-between">
+                <p className="text-[10px] text-gray-400 font-medium uppercase tracking-wider leading-none">
                   {fastingState.isFasting ? 'Time Fasted' : 'Time Eating'}
                 </p>
-                <div className="flex flex-col">
-                  <p className="text-xl font-mono tracking-widest leading-none">
-                    {elapsedTime}
-                  </p>
-                  <p className="text-[10px] text-gray-500 font-medium mt-0.5 leading-none">
-                    Since {formatStartTime(fastingState.startTime)}
-                  </p>
-                </div>
+                <p className="text-xl font-mono tracking-widest leading-none">
+                  {elapsedTime}
+                </p>
+                <p className="text-[10px] text-gray-500 font-medium leading-none">
+                  Since {formatStartTime(fastingState.startTime)}
+                </p>
               </div>
             </div>
             <button 

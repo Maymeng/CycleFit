@@ -1,3 +1,4 @@
+
 import React, { useState, useEffect } from 'react';
 import { Mic, X, Plus, Minus, Check, Calendar } from 'lucide-react';
 import { Card } from './ui/Card';
@@ -71,7 +72,10 @@ export const CheckIn: React.FC<CheckInProps> = ({ initialDate, records, onClose,
       <div className="w-full max-w-md bg-gray-50 h-full flex flex-col relative shadow-2xl">
         
         {/* Header - Fixed at Top of Modal */}
-        <div className="flex-none p-4 flex justify-between items-center bg-white shadow-sm z-10 pt-safe">
+        <div 
+          className="flex-none px-4 pb-4 flex justify-between items-center bg-white shadow-sm z-10"
+          style={{ paddingTop: 'calc(env(safe-area-inset-top) + 46px)' }}
+        >
           <button onClick={onClose} className="p-2 rounded-full hover:bg-gray-100 transition-colors">
             <X size={24} className="text-gray-500" />
           </button>

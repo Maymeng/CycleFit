@@ -178,7 +178,7 @@ export const Insights: React.FC<InsightsProps> = ({ data, goal, onEditRecord, on
   };
 
   return (
-    <div className="space-y-6 pb-24 px-4 pt-6">
+    <div className="space-y-6 pb-24 px-4 pt-1">
       <style>{`
         .custom-scrollbar::-webkit-scrollbar {
           width: 4px;
