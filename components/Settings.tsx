@@ -9,7 +9,7 @@ interface SettingsProps {
 
 export const Settings: React.FC<SettingsProps> = ({ goal, onUpdateGoal }) => {
   return (
-    <div className="p-4 space-y-6 pt-8">
+    <div className="p-4 space-y-6 pt-8 pb-24">
       <h2 className="text-2xl font-bold">My Goal</h2>
       
       <Card>
@@ -20,7 +20,7 @@ export const Settings: React.FC<SettingsProps> = ({ goal, onUpdateGoal }) => {
                type="date" 
                value={goal.targetDate}
                onChange={(e) => onUpdateGoal({...goal, targetDate: e.target.value})}
-               className="w-full mt-2 p-3 bg-gray-50 rounded-xl border-none focus:ring-2 focus:ring-black"
+               className="w-full mt-2 p-3 bg-gray-50 rounded-xl border-none focus:ring-2 focus:ring-black font-medium"
              />
           </div>
 
@@ -32,7 +32,7 @@ export const Settings: React.FC<SettingsProps> = ({ goal, onUpdateGoal }) => {
                     type="number" 
                     value={goal.targetWeight}
                     onChange={(e) => onUpdateGoal({...goal, targetWeight: parseFloat(e.target.value)})}
-                    className="w-full p-3 bg-transparent border-none focus:ring-0"
+                    className="w-full p-3 bg-transparent border-none focus:ring-0 font-bold text-lg"
                   />
                   <span className="text-gray-500 text-sm">kg</span>
                </div>
@@ -44,7 +44,7 @@ export const Settings: React.FC<SettingsProps> = ({ goal, onUpdateGoal }) => {
                     type="number" 
                     value={goal.targetBodyFat}
                     onChange={(e) => onUpdateGoal({...goal, targetBodyFat: parseFloat(e.target.value)})}
-                    className="w-full p-3 bg-transparent border-none focus:ring-0"
+                    className="w-full p-3 bg-transparent border-none focus:ring-0 font-bold text-lg"
                   />
                   <span className="text-gray-500 text-sm">%</span>
                </div>
@@ -52,6 +52,10 @@ export const Settings: React.FC<SettingsProps> = ({ goal, onUpdateGoal }) => {
           </div>
         </div>
       </Card>
+      
+      <div className="flex items-center gap-2 justify-center text-xs text-green-600 bg-green-50 py-2 rounded-lg opacity-80">
+        <span>✓ Auto-saved to local storage</span>
+      </div>
 
       <div className="text-center text-gray-400 text-xs mt-10">
          Algorithm v1.2 • Cycle Synced

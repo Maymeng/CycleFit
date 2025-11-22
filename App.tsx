@@ -1,46 +1,76 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { INITIAL_GOAL, INITIAL_RECORDS } from './constants';
 import { DailyRecord, UserGoal, CyclePhase } from './types';
-import { getTodayPrediction } from './services/logic';
+import { getTodayPrediction, recalculateFuturePredictions } from './services/logic';
 import { Dashboard } from './components/Dashboard';
 import { Navigation } from './components/Navigation';
 import { CheckIn } from './components/CheckIn';
 import { Insights } from './components/Insights';
 import { GoalEditModal } from './components/GoalEditModal';
 
-// Mock date to simulate "Today" based on the data provided (using 2025-11-22 as 'today' for demo context)
+// Mock date to simulate "Today" for demo purposes. 
+// In a real app, you would use new Date().toISOString().split('T')[0]
 const DEMO_TODAY = '2025-11-22'; 
+const STORAGE_KEY_RECORDS = 'cyclefit_records_v1';
+const STORAGE_KEY_GOAL = 'cyclefit_goal_v1';
+const STORAGE_KEY_FASTING = 'cyclefit_fasting_v1';
 
 export default function App() {
-  const [activeTab, setActiveTab] = useState<'dashboard' | 'insights'>('dashboard');
-  const [records, setRecords] = useState<DailyRecord[]>(INITIAL_RECORDS);
-  const [goal, setGoal] = useState<UserGoal>(INITIAL_GOAL);
+  const [activeTab, setActiveTab] = useState<'dashboard' | 'insights' | 'settings'>('dashboard');
   
-  // Modals
-  const [checkInDate, setCheckInDate] = useState<string | null>(null); // If null, modal is closed
-  const [showGoalModal, setShowGoalModal] = useState(false);
-  
-  // State to hold manual overrides for today's cycle info before it is saved as a permanent record
-  const [todayCycleOverride, setTodayCycleOverride] = useState<{phase: CyclePhase, day: number} | null>(null);
-
-  // 16:8 Timer State
-  const [fastingState, setFastingState] = useState<{isFasting: boolean; startTime: number | null}>({
-    isFasting: true,
-    startTime: Date.now() - 1000 * 60 * 60 * 14 // Simulating 14 hours into fast
+  // Initialize State with LocalStorage Check
+  const [records, setRecords] = useState<DailyRecord[]>(() => {
+    const saved = localStorage.getItem(STORAGE_KEY_RECORDS);
+    return saved ? JSON.parse(saved) : INITIAL_RECORDS;
   });
 
-  const todayDate = DEMO_TODAY; 
+  const [goal, setGoal] = useState<UserGoal>(() => {
+    const saved = localStorage.getItem(STORAGE_KEY_GOAL);
+    return saved ? JSON.parse(saved) : INITIAL_GOAL;
+  });
+
+  const [fastingState, setFastingState] = useState<{isFasting: boolean; startTime: number | null}>(() => {
+    const saved = localStorage.getItem(STORAGE_KEY_FASTING);
+    if (saved) return JSON.parse(saved);
+    return {
+      isFasting: true,
+      startTime: Date.now() - 1000 * 60 * 60 * 14 // Default simulation
+    };
+  });
   
+  // Modals
+  const [checkInDate, setCheckInDate] = useState<string | null>(null);
+  const [showGoalModal, setShowGoalModal] = useState(false);
+  
+  const [todayCycleOverride, setTodayCycleOverride] = useState<{phase: CyclePhase, day: number} | null>(null);
+
+  const todayDate = DEMO_TODAY; 
+
+  // --- Persistence Effects ---
+  useEffect(() => {
+    localStorage.setItem(STORAGE_KEY_RECORDS, JSON.stringify(records));
+  }, [records]);
+
+  useEffect(() => {
+    localStorage.setItem(STORAGE_KEY_GOAL, JSON.stringify(goal));
+  }, [goal]);
+
+  useEffect(() => {
+    localStorage.setItem(STORAGE_KEY_FASTING, JSON.stringify(fastingState));
+  }, [fastingState]);
+
+
+  // --- Logic ---
   const getOrGenerateToday = () => {
     const existing = records.find(r => r.date === todayDate);
     
-    // Base prediction
     let record = existing;
     if (!record) {
+      // Generate a prediction for today if it doesn't exist
       const { predictedWeight, predictedFat } = getTodayPrediction(records, todayDate, goal);
       record = {
         date: todayDate,
-        cycleDay: 11,
+        cycleDay: 11, // Default fallback, likely overridden by logic
         cyclePhase: CyclePhase.OVULATION,
         suggestion: "代谢峰值，汗出透彻",
         predictedWeight,
@@ -48,7 +78,7 @@ export default function App() {
       } as DailyRecord;
     }
 
-    // Apply Override if exists (Simulating "Real-time" update)
+    // Apply temporary visual override if user changed cycle in UI but hasn't saved yet
     if (todayCycleOverride) {
       return {
         ...record,
@@ -63,26 +93,19 @@ export default function App() {
   const todayRecord = getOrGenerateToday();
 
   const handleSaveCheckIn = (date: string, data: { weight: number; fat: number; note: string; workout: boolean; fasting: boolean; cheat: boolean }) => {
-    // Remove existing record for this date if it exists
-    const otherRecords = records.filter(r => r.date !== date);
-    
-    // Find if there was an existing record to preserve predictions/cycle info, or create new
+    // 1. Find existing or create new
     const existingRecord = records.find(r => r.date === date);
     
     let baseRecord = existingRecord;
-    
-    // If no record exists for this date (e.g. logging for a past date that wasn't generated), 
-    // we might need to generate basic prediction info or just save the actuals.
-    // For simplicity here, if it's "today", we use todayRecord. If it's another date and no record, we default fields.
     if (!baseRecord) {
+       // Create from scratch or today template
        if (date === todayDate) {
          baseRecord = todayRecord;
        } else {
-         // Fallback for past dates without prediction data
          baseRecord = {
            date: date,
-           cycleDay: 1, // Default or calculated
-           cyclePhase: CyclePhase.FOLLICULAR, // Default
+           cycleDay: 1, 
+           cyclePhase: CyclePhase.FOLLICULAR,
            suggestion: '',
            predictedWeight: 0,
            predictedBodyFat: 0
@@ -92,7 +115,7 @@ export default function App() {
 
     const newRecord: DailyRecord = {
       ...baseRecord,
-      date: date, // Ensure date is correct
+      date: date,
       actualWeight: data.weight,
       actualBodyFat: data.fat,
       note: data.note,
@@ -101,48 +124,55 @@ export default function App() {
       isCheatDay: data.cheat
     };
 
-    setRecords([...otherRecords, newRecord].sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime()));
+    // 2. Update Array
+    const otherRecords = records.filter(r => r.date !== date);
+    const updatedRecords = [...otherRecords, newRecord];
+
+    // 3. Recalculate FUTURE predictions based on this new data point
+    // This ensures if I change last week's weight, tomorrow's prediction updates
+    const smartRecords = recalculateFuturePredictions(updatedRecords, goal);
+
+    setRecords(smartRecords);
   };
 
   const handleDeleteRecord = (date: string) => {
-    setRecords(prev => prev.filter(r => r.date !== date));
+    const newRecords = records.filter(r => r.date !== date);
+    setRecords(recalculateFuturePredictions(newRecords, goal));
   };
 
   const handleCycleUpdate = (phase: CyclePhase, day: number) => {
     setTodayCycleOverride({ phase, day });
-    // In a real app, this might trigger a re-calculation of predictions for future dates
   };
 
   const toggleFasting = () => {
     const now = Date.now();
-    
-    // Logic: If we are stopping a fast (Transitioning from Fasting -> Eating)
     if (fastingState.isFasting && fastingState.startTime) {
       const elapsedHours = (now - fastingState.startTime) / (1000 * 60 * 60);
-      
-      // Auto-update check-in if fast was longer than 16 hours
       if (elapsedHours >= 16) {
         setRecords(prevRecords => {
-          // Check if today already has a record
           const existingIndex = prevRecords.findIndex(r => r.date === todayDate);
-          
           if (existingIndex >= 0) {
-            // Update existing
             const updated = [...prevRecords];
             updated[existingIndex] = { ...updated[existingIndex], completedFasting: true };
             return updated;
           } else {
-            // Create new based on 'todayRecord' template but persistent
             return [...prevRecords, { ...todayRecord, completedFasting: true }].sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime());
           }
         });
       }
     }
-
     setFastingState(prev => ({
       isFasting: !prev.isFasting,
-      startTime: now // Reset timer for the new phase (whether eating or fasting)
+      startTime: now 
     }));
+  };
+
+  // Reset for Demo
+  const handleResetData = () => {
+    if(confirm("Are you sure you want to reset all data to default? This cannot be undone.")) {
+      localStorage.clear();
+      window.location.reload();
+    }
   };
 
   return (
@@ -168,11 +198,30 @@ export default function App() {
             onDeleteRecord={handleDeleteRecord}
           />
         )}
+
+        {activeTab === 'settings' && (
+           <div className="p-8 space-y-8">
+             <h2 className="text-2xl font-bold">App Settings</h2>
+             <div className="bg-white rounded-xl p-4 shadow-sm">
+               <p className="text-sm text-gray-500 mb-4">Data Management</p>
+               <button 
+                 onClick={handleResetData}
+                 className="w-full py-3 text-red-600 font-bold border border-red-100 rounded-lg hover:bg-red-50"
+               >
+                 Reset All Data
+               </button>
+             </div>
+             <div className="text-center text-xs text-gray-400">
+               CycleFit v1.0.2 <br/>
+               Data stored locally on device.
+             </div>
+           </div>
+        )}
       </div>
 
       <Navigation 
-        activeTab={activeTab as any} 
-        setActiveTab={setActiveTab as any} 
+        activeTab={activeTab} 
+        setActiveTab={setActiveTab} 
         onAdd={() => setCheckInDate(todayDate)}
       />
 

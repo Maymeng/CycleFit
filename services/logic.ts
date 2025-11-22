@@ -46,10 +46,6 @@ export const getTodayPrediction = (
   const kFactor = phaseConfig ? phaseConfig.kFactor : 0;
 
   // Formula: Prediction = Yesterday - (Standard Loss) + K_Factor
-  // Note: The user provided formula is specific: P = Actual_Yest - (Gap/7700) + K.
-  // We will approximate "Gap/7700" as a standard deficit if they did workouts, or just linear trajectory.
-  // For this demo, we stick closer to the linear trajectory + K factor to smooth it out.
-  
   let predictedWeight = baseWeight - dailyBaseLoss + kFactor;
   
   // Clamp
@@ -64,4 +60,66 @@ export const getTodayPrediction = (
 
 export const isBetterThanPredicted = (actual: number, predicted: number) => {
   return actual < predicted;
+};
+
+/**
+ * INTELLIGENT RECALCULATION
+ * Iterates through all records. 
+ * If it finds an 'actualWeight', that becomes the new anchor.
+ * Subsequent 'predictedWeights' are recalculated based on that anchor + goal trajectory + cycle fluctuations.
+ */
+export const recalculateFuturePredictions = (records: DailyRecord[], goal: UserGoal): DailyRecord[] => {
+  const sorted = [...records].sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime());
+  
+  // We need at least one record to start
+  if (sorted.length === 0) return sorted;
+
+  let currentAnchorWeight = sorted[0].actualWeight || sorted[0].predictedWeight || goal.startWeight;
+  // let currentAnchorFat = sorted[0].actualBodyFat || sorted[0].predictedBodyFat || goal.startBodyFat;
+  
+  // Calculate average daily loss needed to hit goal from start (simplified linear model for the "baseline")
+  // In a complex app, this would adjust dynamically based on remaining days.
+  const msPerDay = 1000 * 60 * 60 * 24;
+  const totalDays = Math.max(1, (new Date(goal.targetDate).getTime() - new Date(sorted[0].date).getTime()) / msPerDay);
+  const totalLoss = goal.startWeight - goal.targetWeight;
+  const baseDailyLoss = totalLoss / totalDays;
+
+  return sorted.map((record, index) => {
+    // If this is the very first record, keep it (or use actual if available)
+    if (index === 0) return record;
+
+    const prevRecord = sorted[index - 1];
+    const phaseInfo = PHASES_CONFIG[record.cyclePhase];
+    const kFactor = phaseInfo.kFactor || 0;
+
+    // Logic:
+    // 1. Did the user log a weight yesterday? If so, that's our new reality base.
+    // 2. If not, we continue predicting from yesterday's prediction.
+    
+    let baseForToday = prevRecord.predictedWeight;
+    if (prevRecord.actualWeight) {
+      baseForToday = prevRecord.actualWeight;
+    }
+
+    // Calculate new prediction
+    // Prediction = Base - DailyDeficit + CycleFluctuation
+    // Note: We remove the cycle fluctuation of the *previous* day (to normalize) and add *this* day's? 
+    // Simplified: Prediction = Base - Loss + K_Factor
+    
+    let newPredicted = baseForToday - baseDailyLoss + kFactor;
+    
+    // Rounding
+    newPredicted = Math.round(newPredicted * 100) / 100;
+
+    // If this record HAS an actual weight, we don't change the actual, but we update the predicted
+    // so we can see how we did against the plan.
+    // HOWEVER, for the NEXT iteration, this record's actual weight will become the anchor.
+
+    return {
+      ...record,
+      predictedWeight: newPredicted,
+      // Simplified fat logic: drop 0.02% per day if not tracked
+      predictedBodyFat: Number((prevRecord.actualBodyFat || prevRecord.predictedBodyFat - 0.02).toFixed(1))
+    };
+  });
 };
