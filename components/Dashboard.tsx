@@ -303,13 +303,13 @@ export const Dashboard: React.FC<DashboardProps> = ({
               </div>
               {/* Flattened text structure with exact height alignment */}
               <div className="flex flex-col h-10 justify-between">
-                <p className="text-[10px] text-gray-400 font-medium uppercase tracking-wider leading-none">
+                <p className="text-xs text-gray-400 font-medium uppercase tracking-wider leading-none translate-y-[5px]">
                   {fastingState.isFasting ? 'Time Fasted' : 'Time Eating'}
                 </p>
                 <p className="text-xl font-mono tracking-widest leading-none">
                   {elapsedTime}
                 </p>
-                <p className="text-[10px] text-gray-500 font-medium leading-none">
+                <p className="text-[10px] text-gray-500 font-medium leading-none -translate-y-[5px]">
                   Since {formatStartTime(fastingState.startTime)}
                 </p>
               </div>
