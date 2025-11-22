@@ -1,0 +1,7 @@
+{
+  "name": "CycleFit Smart Tracker",
+  "description": "A cycle-synced weight loss tracker with intelligent prediction algorithms, 16:8 fasting timer, and simplified check-ins.",
+  "requestFramePermissions": [
+    "microphone"
+  ]
+}
