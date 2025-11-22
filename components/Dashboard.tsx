@@ -1,3 +1,4 @@
+
 import React, { useState, useEffect } from 'react';
 import { DailyRecord, UserGoal, CyclePhase } from '../types';
 import { PHASES_CONFIG } from '../constants';
@@ -36,7 +37,8 @@ export const Dashboard: React.FC<DashboardProps> = ({
   onNavigateToGoal,
   onUpdateCycle
 }) => {
-  const [timeLeft, setTimeLeft] = useState<string>('00:00:00');
+  // Renamed from timeLeft to elapsedTime to reflect cumulative counting
+  const [elapsedTime, setElapsedTime] = useState<string>('00:00:00');
   const [weightProgress, setWeightProgress] = useState(0);
   const [fatProgress, setFatProgress] = useState(0);
   const [showCycleEdit, setShowCycleEdit] = useState(false);
@@ -71,12 +73,12 @@ export const Dashboard: React.FC<DashboardProps> = ({
     }
   }, [todayRecord, goal]);
 
-  // Fasting/Eating Timer Logic
+  // Fasting/Eating Cumulative Timer Logic
   useEffect(() => {
     const updateTimer = () => {
       if (fastingState.startTime) {
         const now = Date.now();
-        const elapsed = now - fastingState.startTime;
+        const elapsed = now - fastingState.startTime; // Count UP from start time
         
         const totalSeconds = Math.floor(elapsed / 1000);
         const h = Math.floor(totalSeconds / 3600);
@@ -85,9 +87,9 @@ export const Dashboard: React.FC<DashboardProps> = ({
         
         // Format: HH:MM:SS
         const format = (num: number) => num.toString().padStart(2, '0');
-        setTimeLeft(`${format(h)}:${format(m)}:${format(s)}`);
+        setElapsedTime(`${format(h)}:${format(m)}:${format(s)}`);
       } else {
-        setTimeLeft('00:00:00');
+        setElapsedTime('00:00:00');
       }
     };
 
@@ -286,7 +288,7 @@ export const Dashboard: React.FC<DashboardProps> = ({
         </div>
       </div>
 
-      {/* 4. 16+8 Timer */}
+      {/* 4. 16+8 Timer - Cumulative Count */}
       <div className="px-4">
         <Card className="bg-gray-900 text-white">
           <div className="flex items-center justify-between">
@@ -296,7 +298,7 @@ export const Dashboard: React.FC<DashboardProps> = ({
               </div>
               <div>
                 <p className="text-xs text-gray-400 font-medium">{fastingState.isFasting ? 'TIME FASTED' : 'TIME EATING'}</p>
-                <p className="text-xl font-mono tracking-widest">{timeLeft}</p>
+                <p className="text-xl font-mono tracking-widest">{elapsedTime}</p>
               </div>
             </div>
             <button 

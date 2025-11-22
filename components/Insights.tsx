@@ -1,3 +1,4 @@
+
 import React, { useState, useMemo } from 'react';
 import { 
   LineChart, 
@@ -8,13 +9,15 @@ import {
   Tooltip, 
   ResponsiveContainer
 } from 'recharts';
-import { DailyRecord } from '../types';
+import { DailyRecord, UserGoal } from '../types';
 import { Card } from './ui/Card';
 import { ChevronLeft, ChevronRight, List, BarChart, Trash2 } from 'lucide-react';
 import { PHASES_CONFIG } from '../constants';
+import { generateProjectedRecords } from '../services/logic';
 
 interface InsightsProps {
   data: DailyRecord[];
+  goal: UserGoal;
   onEditRecord: (date: string) => void;
   onDeleteRecord: (date: string) => void;
 }
@@ -22,9 +25,9 @@ interface InsightsProps {
 type MetricType = 'weight' | 'fat';
 type ViewType = 'chart' | 'table';
 
-export const Insights: React.FC<InsightsProps> = ({ data, onEditRecord, onDeleteRecord }) => {
+export const Insights: React.FC<InsightsProps> = ({ data, goal, onEditRecord, onDeleteRecord }) => {
   // State for Chart controls
-  const [currentMonthDate, setCurrentMonthDate] = useState(new Date('2025-11-01')); // Default to Nov 2025 for demo
+  const [currentMonthDate, setCurrentMonthDate] = useState(new Date('2025-11-01')); 
   const [metric, setMetric] = useState<MetricType>('weight');
   const [viewMode, setViewMode] = useState<ViewType>('chart');
   const [showAllLogs, setShowAllLogs] = useState(false);
@@ -38,48 +41,80 @@ export const Insights: React.FC<InsightsProps> = ({ data, onEditRecord, onDelete
     data?: DailyRecord;
     x: number; 
     y: number;
+    rectWidth: number;
   } | null>(null);
 
-  // Filter Chart Data by Month
-  const monthlyData = useMemo(() => {
-    const year = currentMonthDate.getFullYear();
-    const month = currentMonthDate.getMonth();
+  // 1. Generate a complete dataset: History + Future Projections
+  const allRecords = useMemo(() => {
+    // Generate predictions starting from the last actual record
+    const projections = generateProjectedRecords(data, goal);
     
-    return data.filter(d => {
-      const date = new Date(d.date);
-      return date.getFullYear() === year && date.getMonth() === month;
-    }).sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime());
-  }, [data, currentMonthDate]);
+    // Create a map for easy lookup, preferring actual data
+    const map = new Map<string, DailyRecord>();
+    
+    // First populate with projections (so they are defaults)
+    projections.forEach(p => map.set(p.date, p));
+    
+    // Then overwrite with actual history where it exists
+    data.forEach(d => map.set(d.date, d));
+    
+    return Array.from(map.values());
+  }, [data, goal]);
 
-  // Chart specific Data format
-  const chartData = monthlyData.map(d => ({
-    name: d.date.split('-')[2], // Day
-    actual: metric === 'weight' ? d.actualWeight : d.actualBodyFat,
-    predicted: metric === 'weight' ? d.predictedWeight : d.predictedBodyFat,
-    phase: d.cyclePhase,
-    cycleDay: d.cycleDay,
-    fullDate: d.date,
-    note: d.note
-  }));
 
-  // Generate Heatmap Year Data
+  // 2. Prepare Data for Chart (Always 1st to end of month)
+  const chartData = useMemo(() => {
+    const year = currentMonthDate.getFullYear();
+    const month = currentMonthDate.getMonth(); // 0-indexed
+    const daysInMonth = new Date(year, month + 1, 0).getDate(); // Get last day of month
+    
+    const result = [];
+    for (let d = 1; d <= daysInMonth; d++) {
+       const dayStr = String(d).padStart(2, '0');
+       const monthStr = String(month + 1).padStart(2, '0');
+       const fullDateStr = `${year}-${monthStr}-${dayStr}`;
+       
+       const record = allRecords.find(r => r.date === fullDateStr);
+       
+       // Dynamic selection based on Metric
+       let actualVal: number | null | undefined = null;
+       let predictedVal: number | null | undefined = null;
+
+       if (metric === 'weight') {
+         actualVal = record?.actualWeight;
+         predictedVal = record?.predictedWeight;
+       } else {
+         actualVal = record?.actualBodyFat;
+         predictedVal = record?.predictedBodyFat;
+       }
+
+       result.push({
+         name: String(d), // X-Axis: 1, 2, 3...
+         actual: actualVal, 
+         predicted: predictedVal, 
+         cyclePhase: record?.cyclePhase,
+         note: record?.note,
+         fullDate: fullDateStr
+       });
+    }
+    return result;
+  }, [currentMonthDate, allRecords, metric]);
+
+
+  // 3. Prepare Data for Heatmap (Full Year)
   const heatmapDays = useMemo(() => {
     const days = [];
-    // Start from Jan 1 of the selected year
     const start = new Date(heatmapYear, 0, 1);
     const end = new Date(heatmapYear, 11, 31);
     
-    // Create a lookup map for existing records
-    const recordMap = new Map(data.map(r => [r.date, r]));
+    const recordMap = new Map(allRecords.map(r => [r.date, r]));
     
-    // Iterate through every day of the year
     const current = new Date(start);
     while (current <= end) {
-      // Format YYYY-MM-DD manually to avoid timezone issues
-      const year = current.getFullYear();
-      const month = String(current.getMonth() + 1).padStart(2, '0');
-      const day = String(current.getDate()).padStart(2, '0');
-      const dateStr = `${year}-${month}-${day}`;
+      const y = current.getFullYear();
+      const m = String(current.getMonth() + 1).padStart(2, '0');
+      const d = String(current.getDate()).padStart(2, '0');
+      const dateStr = `${y}-${m}-${d}`;
       
       days.push({
         date: dateStr,
@@ -88,7 +123,8 @@ export const Insights: React.FC<InsightsProps> = ({ data, onEditRecord, onDelete
       current.setDate(current.getDate() + 1);
     }
     return days;
-  }, [heatmapYear, data]);
+  }, [heatmapYear, allRecords]);
+
 
   const handleMonthChange = (direction: -1 | 1) => {
     const newDate = new Date(currentMonthDate);
@@ -101,7 +137,7 @@ export const Insights: React.FC<InsightsProps> = ({ data, onEditRecord, onDelete
   };
 
   const allLogs = useMemo(() => {
-    // Show all data descending for logs
+    // Only show actual logs in the list, not future projections
     return [...data].sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
   }, [data]);
 
@@ -110,26 +146,62 @@ export const Insights: React.FC<InsightsProps> = ({ data, onEditRecord, onDelete
     setHoveredDay({
       date: dayItem.date,
       data: dayItem.record,
-      // Center horizontally
-      x: rect.left + rect.width / 2,
-      // Position AT THE BOTTOM of the element (so tooltip appears below)
-      y: rect.bottom
+      x: rect.left,
+      y: rect.bottom,
+      rectWidth: rect.width
     });
   };
 
-  const handleHeatmapLeave = () => {
-    setHoveredDay(null);
+  // Helper to determine text color in tooltip
+  const getValueColor = (actual: number | undefined, predicted: number) => {
+    if (actual === undefined || actual === null) return 'text-white';
+    if (actual <= predicted) return 'font-bold text-green-400 text-sm'; // Success
+    return 'font-bold text-orange-400 text-sm'; // Fail
+  };
+
+  // Helper for tooltip positioning
+  const getTooltipStyle = () => {
+    if (!hoveredDay) return {};
+    const tooltipWidth = 192; // w-48 is 12rem = 192px
+    
+    // Center tooltip below element
+    let left = hoveredDay.x + (hoveredDay.rectWidth / 2) - (tooltipWidth / 2);
+    
+    // Clamp to screen edges
+    const padding = 10;
+    left = Math.max(padding, Math.min(left, window.innerWidth - tooltipWidth - padding));
+
+    return {
+      left: `${left}px`,
+      top: `${hoveredDay.y - 20}px` //  below the square
+    };
   };
 
   return (
     <div className="space-y-6 pb-24 px-4 pt-6">
+      <style>{`
+        .custom-scrollbar::-webkit-scrollbar {
+          width: 4px;
+        }
+        .custom-scrollbar::-webkit-scrollbar-track {
+          background: #f3f4f6;
+          border-radius: 2px;
+        }
+        .custom-scrollbar::-webkit-scrollbar-thumb {
+          background: #d1d5db;
+          border-radius: 2px;
+        }
+        .custom-scrollbar::-webkit-scrollbar-thumb:hover {
+          background: #9ca3af;
+        }
+      `}</style>
+
       <h2 className="text-xl font-bold text-gray-800">Trends & Insights</h2>
       
-      {/* 1. Main Chart Card with Controls */}
+      {/* Chart Card */}
       <Card>
-        {/* Controls Header */}
         <div className="flex flex-col gap-4 mb-4">
-          {/* Month Nav */}
+          {/* Header Controls */}
           <div className="flex items-center justify-between">
             <button onClick={() => handleMonthChange(-1)} className="p-1 rounded-full hover:bg-gray-100">
               <ChevronLeft size={20} />
@@ -140,7 +212,7 @@ export const Insights: React.FC<InsightsProps> = ({ data, onEditRecord, onDelete
             </button>
           </div>
 
-          {/* Metric & View Toggles */}
+          {/* Toggles */}
           <div className="flex justify-between items-center">
              <div className="flex bg-gray-100 p-1 rounded-lg">
                 <button 
@@ -156,7 +228,6 @@ export const Insights: React.FC<InsightsProps> = ({ data, onEditRecord, onDelete
                   Fat %
                 </button>
              </div>
-
              <button 
                onClick={() => setViewMode(prev => prev === 'chart' ? 'table' : 'chart')}
                className="p-2 text-gray-500 hover:bg-gray-100 rounded-lg"
@@ -166,113 +237,79 @@ export const Insights: React.FC<InsightsProps> = ({ data, onEditRecord, onDelete
           </div>
         </div>
 
-        {/* Content Area */}
         <div className="h-64 w-full">
           {viewMode === 'chart' ? (
-            chartData.length > 0 ? (
-              <ResponsiveContainer width="100%" height="100%">
-                <LineChart data={chartData}>
-                  <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f0f0f0" />
-                  <XAxis 
-                    dataKey="name" 
-                    tick={{fontSize: 10, fill: '#9CA3AF'}} 
-                    axisLine={false}
-                    tickLine={false}
-                    interval={2}
-                  />
-                  <YAxis 
-                    domain={['auto', 'auto']} 
-                    tick={{fontSize: 10, fill: '#9CA3AF'}}
-                    axisLine={false}
-                    tickLine={false}
-                    width={30}
-                  />
-                  <Tooltip 
-                    contentStyle={{borderRadius: '12px', border: 'none', boxShadow: '0 4px 6px -1px rgba(0, 0, 0, 0.1)'}}
-                    labelStyle={{color: '#6B7280', fontSize: '12px'}}
-                  />
-                  <Line 
-                    type="monotone" 
-                    dataKey="predicted" 
-                    stroke="#9CA3AF" 
-                    strokeDasharray="5 5" 
-                    strokeWidth={2} 
-                    dot={false} 
-                  />
-                  <Line 
-                    type="monotone" 
-                    dataKey="actual" 
-                    stroke={metric === 'weight' ? '#10B981' : '#F59E0B'} 
-                    strokeWidth={3} 
-                    dot={{r: 3, fill: metric === 'weight' ? '#10B981' : '#F59E0B', strokeWidth: 0}} 
-                    activeDot={{r: 6}}
-                  />
-                </LineChart>
-              </ResponsiveContainer>
-            ) : (
-              <div className="h-full flex items-center justify-center text-gray-400 text-sm">
-                No data for this month
-              </div>
-            )
+            <ResponsiveContainer width="100%" height="100%">
+              {/* Add key={metric} to force full re-render when metric changes to ensure Y-axis updates */}
+              <LineChart key={metric} data={chartData} margin={{ right: 10, left: -20 }}>
+                <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f0f0f0" />
+                <XAxis 
+                  dataKey="name" 
+                  tick={{fontSize: 10, fill: '#9CA3AF'}} 
+                  axisLine={false}
+                  tickLine={false}
+                  interval={2}
+                />
+                <YAxis 
+                  domain={['auto', 'auto']} 
+                  tick={{fontSize: 10, fill: '#9CA3AF'}}
+                  axisLine={false}
+                  tickLine={false}
+                />
+                <Tooltip 
+                  contentStyle={{borderRadius: '12px', border: 'none', boxShadow: '0 4px 6px -1px rgba(0, 0, 0, 0.1)'}}
+                  labelStyle={{color: '#6B7280', fontSize: '12px'}}
+                  formatter={(value: number) => [`${value} ${metric === 'weight' ? 'kg' : '%'}`, metric === 'weight' ? (value === chartData.find(d => d.actual === value)?.actual ? 'Actual' : 'Predicted') : (value === chartData.find(d => d.actual === value)?.actual ? 'Actual' : 'Predicted')]}
+                />
+                {/* Projected Line (Dashed) - Shows for future dates too */}
+                <Line 
+                  type="monotone" 
+                  dataKey="predicted" 
+                  stroke="#9CA3AF" 
+                  strokeDasharray="4 4" 
+                  strokeWidth={2} 
+                  dot={false}
+                  connectNulls={true} 
+                  name="Predicted"
+                />
+                {/* Actual Line (Solid) - Shows gaps for missing days */}
+                <Line 
+                  type="monotone" 
+                  dataKey="actual" 
+                  stroke={metric === 'weight' ? '#10B981' : '#3B82F6'} 
+                  strokeWidth={3} 
+                  dot={{r: 3, fill: metric === 'weight' ? '#10B981' : '#3B82F6', strokeWidth: 0}} 
+                  activeDot={{r: 6}}
+                  connectNulls={false}
+                  name="Actual"
+                />
+              </LineChart>
+            </ResponsiveContainer>
           ) : (
-            /* Detailed Table View */
-            <div 
-              className="h-full overflow-x-auto overflow-y-auto -mx-5 px-5 custom-scrollbar"
-              style={{
-                scrollbarWidth: 'thin',
-                scrollbarColor: '#CBD5E1 transparent'
-              }}
-            >
-              <style>{`
-                .custom-scrollbar::-webkit-scrollbar {
-                  width: 6px;
-                  height: 6px;
-                }
-                .custom-scrollbar::-webkit-scrollbar-track {
-                  background: transparent;
-                }
-                .custom-scrollbar::-webkit-scrollbar-thumb {
-                  background-color: #CBD5E1;
-                  border-radius: 20px;
-                }
-              `}</style>
-              <table className="w-full text-sm text-left min-w-[500px]">
+            <div className="h-full overflow-y-auto custom-scrollbar pr-1">
+               {/* Simple Table View */}
+               <table className="w-full text-sm text-left border-collapse">
                  <thead className="text-xs text-gray-400 uppercase bg-gray-50 sticky top-0 z-10">
                    <tr>
-                     <th className="px-3 py-3 rounded-tl-lg">Date</th>
-                     <th className="px-3 py-3">Cycle</th>
-                     <th className="px-3 py-3">Pred (Kg/%)</th>
-                     <th className="px-3 py-3">Actual (Kg/%)</th>
-                     <th className="px-3 py-3 rounded-tr-lg">Note</th>
+                     <th className="px-2 py-2 rounded-tl-lg">Date</th>
+                     <th className="px-2 py-2">Actual ({metric === 'weight' ? 'kg' : '%'})</th>
+                     <th className="px-2 py-2 rounded-tr-lg">Pred ({metric === 'weight' ? 'kg' : '%'})</th>
                    </tr>
                  </thead>
-                 <tbody className="divide-y divide-gray-50">
-                   {monthlyData.map((d, i) => (
-                     <tr key={i} className="hover:bg-gray-50/50">
-                       <td className="px-3 py-3 font-medium text-gray-700 whitespace-nowrap">
-                          {d.date.slice(5).replace('-','/')}
+                 <tbody>
+                   {chartData.map((d, i) => (
+                     <tr key={i} className="border-b border-gray-50 last:border-none">
+                       <td className="px-2 py-2 font-mono text-gray-500">{d.fullDate}</td>
+                       <td className="px-2 py-2 font-bold text-gray-900">
+                         {d.actual !== null && d.actual !== undefined ? d.actual : '-'}
                        </td>
-                       <td className="px-3 py-3 text-xs text-gray-500 whitespace-nowrap">
-                          {d.cyclePhase.split(' ')[0]} <span className="font-mono">D{d.cycleDay}</span>
-                       </td>
-                       <td className="px-3 py-3 text-xs text-gray-400 whitespace-nowrap">
-                          {d.predictedWeight} / {d.predictedBodyFat}%
-                       </td>
-                       <td className="px-3 py-3 whitespace-nowrap">
-                         {d.actualWeight ? (
-                           <span className="font-bold text-gray-800">{d.actualWeight} <span className="text-gray-400 font-normal text-xs">/ {d.actualBodyFat}%</span></span>
-                         ) : (
-                           <span className="text-gray-300 text-xs">-</span>
-                         )}
-                       </td>
-                       <td className="px-3 py-3 text-xs text-gray-500 max-w-[120px] truncate">
-                          {d.note || '-'}
+                       <td className="px-2 py-2 text-gray-400">
+                         {d.predicted !== null && d.predicted !== undefined ? d.predicted : '-'}
                        </td>
                      </tr>
                    ))}
                  </tbody>
-              </table>
-              {monthlyData.length === 0 && <div className="text-center py-8 text-gray-400 text-sm">No records found for this month</div>}
+               </table>
             </div>
           )}
         </div>
@@ -282,203 +319,146 @@ export const Insights: React.FC<InsightsProps> = ({ data, onEditRecord, onDelete
       <Card className="relative z-10">
         <div className="flex justify-between items-center mb-4">
           <h3 className="text-sm font-semibold text-gray-500">Consistency Heatmap</h3>
-          {/* Year Navigation */}
           <div className="flex items-center gap-2">
-            <button 
-              onClick={() => setHeatmapYear(prev => prev - 1)}
-              className="p-1 text-gray-400 hover:text-black hover:bg-gray-100 rounded-full"
-            >
-              <ChevronLeft size={16} />
-            </button>
+            <button onClick={() => setHeatmapYear(prev => prev - 1)} className="p-1 hover:bg-gray-100 rounded-full"><ChevronLeft size={16}/></button>
             <span className="text-xs font-bold font-mono">{heatmapYear}</span>
-            <button 
-              onClick={() => setHeatmapYear(prev => prev + 1)}
-              className="p-1 text-gray-400 hover:text-black hover:bg-gray-100 rounded-full"
-            >
-              <ChevronRight size={16} />
-            </button>
+            <button onClick={() => setHeatmapYear(prev => prev + 1)} className="p-1 hover:bg-gray-100 rounded-full"><ChevronRight size={16}/></button>
           </div>
         </div>
 
-        <div className="flex flex-wrap gap-0.5 mb-4">
+        <div className="flex flex-wrap gap-0.5 mb-4 justify-center sm:justify-start">
            {heatmapDays.map((item, i) => {
              const day = item.record;
-             const isSuccess = day?.actualWeight && day.actualWeight <= day.predictedWeight;
+             const hasActual = typeof day?.actualWeight === 'number';
+             const isSuccess = hasActual && day!.actualWeight! <= day!.predictedWeight;
              const isWorkout = day?.completedWorkout;
-             const hasData = !!day?.actualWeight;
              
-             let colorClass = 'bg-gray-100'; // Default empty
+             let colorClass = 'bg-gray-100'; 
              if (isSuccess) colorClass = 'bg-green-500';
              else if (isWorkout) colorClass = 'bg-green-300';
-             else if (hasData) colorClass = 'bg-gray-300';
+             else if (hasActual) colorClass = 'bg-gray-300';
 
              return (
                <div 
                  key={i}
                  onMouseEnter={(e) => handleHeatmapEnter(e, item)}
-                 onMouseLeave={handleHeatmapLeave}
-                 className={`w-2.5 h-2.5 rounded-[1px] cursor-default transition-opacity hover:opacity-80 ${colorClass}`}
+                 onMouseLeave={() => setHoveredDay(null)}
+                 className={`w-2.5 h-2.5 rounded-[1px] ${colorClass} transition-colors hover:opacity-80`}
                />
              );
            })}
         </div>
         
         {/* Legend */}
-        <div className="flex items-center gap-4 text-[10px] text-gray-500">
+        <div className="flex flex-wrap items-center justify-center gap-x-4 gap-y-2 pt-2 border-t border-gray-50 text-[10px] text-gray-500">
           <div className="flex items-center gap-1.5">
-             <div className="w-2.5 h-2.5 rounded-[1px] bg-green-500"></div>
-             <span>Target Met</span>
+            <div className="w-2.5 h-2.5 rounded-[1px] bg-green-500"></div>
+            <span>Goal Met</span>
           </div>
           <div className="flex items-center gap-1.5">
-             <div className="w-2.5 h-2.5 rounded-[1px] bg-green-300"></div>
-             <span>Workout Done</span>
-          </div>
-           <div className="flex items-center gap-1.5">
-             <div className="w-2.5 h-2.5 rounded-[1px] bg-gray-300"></div>
-             <span>Logged</span>
+            <div className="w-2.5 h-2.5 rounded-[1px] bg-green-300"></div>
+            <span>Workout</span>
           </div>
           <div className="flex items-center gap-1.5">
-             <div className="w-2.5 h-2.5 rounded-[1px] bg-gray-100"></div>
-             <span>Empty</span>
+            <div className="w-2.5 h-2.5 rounded-[1px] bg-gray-300"></div>
+            <span>Logged</span>
+          </div>
+          <div className="flex items-center gap-1.5">
+            <div className="w-2.5 h-2.5 rounded-[1px] bg-gray-100 border border-gray-200"></div>
+            <span>Empty</span>
           </div>
         </div>
       </Card>
 
-      {/* Custom Fast Tooltip */}
-      {hoveredDay && (() => {
-        // Calculate tooltip positioning to stay on screen and align arrow
-        const TOOLTIP_WIDTH = 224; // w-56 is 14rem = 224px
-        const HALF_TOOLTIP = TOOLTIP_WIDTH / 2;
-        const SCREEN_PADDING = 10;
-        
-        // Clamp tooltip within screen bounds
-        const tooltipLeft = Math.min(
-          window.innerWidth - TOOLTIP_WIDTH - SCREEN_PADDING, 
-          Math.max(SCREEN_PADDING, hoveredDay.x - HALF_TOOLTIP)
-        );
+      {/* Tooltip for Heatmap */}
+      {hoveredDay && (
+        <div 
+          className="fixed z-50 bg-black/90 backdrop-blur text-white text-xs p-3 rounded-lg pointer-events-none shadow-xl border border-gray-700 w-48 animate-fade-in"
+          style={getTooltipStyle()}
+        >
+          <div className="font-bold border-b border-gray-700 pb-2 mb-2 text-center">{hoveredDay.date}</div>
+          {hoveredDay.data ? (
+            <div className="space-y-3">
+               {/* Weight Row */}
+               <div>
+                 <div className="text-[10px] text-gray-400 uppercase tracking-wider mb-1">Weight</div>
+                 <div className="flex justify-between items-end">
+                   <span className="text-gray-400">Pred: {hoveredDay.data.predictedWeight}</span>
+                   <span className={getValueColor(hoveredDay.data.actualWeight, hoveredDay.data.predictedWeight)}>
+                     {hoveredDay.data.actualWeight ? hoveredDay.data.actualWeight + ' kg' : '-'}
+                   </span>
+                 </div>
+               </div>
 
-        // Calculate arrow position relative to tooltip container
-        // This ensures the arrow points to hoveredDay.x regardless of tooltip shift
-        const arrowRelativeX = hoveredDay.x - tooltipLeft;
+               {/* Fat Row */}
+               <div>
+                 <div className="text-[10px] text-gray-400 uppercase tracking-wider mb-1">Body Fat</div>
+                 <div className="flex justify-between items-end">
+                   <span className="text-gray-400">Pred: {hoveredDay.data.predictedBodyFat}%</span>
+                   <span className={getValueColor(hoveredDay.data.actualBodyFat, hoveredDay.data.predictedBodyFat)}>
+                     {hoveredDay.data.actualBodyFat ? hoveredDay.data.actualBodyFat + '%' : '-'}
+                   </span>
+                 </div>
+               </div>
 
-        return (
-          <div 
-            className="fixed z-50 bg-black/90 backdrop-blur text-white text-xs p-3 rounded-lg pointer-events-none shadow-xl border border-gray-700 w-56 animate-fade-in"
-            style={{
-              left: `${tooltipLeft}px`,
-              top: `${hoveredDay.y}px` // Close gap: 0px below square
-            }}
-          >
-            {/* Triangle Arrow Pointing Up */}
-            <div 
-              className="absolute top-[-6px] w-0 h-0 border-l-[6px] border-l-transparent border-r-[6px] border-r-transparent border-b-[6px] border-b-black/90"
-              style={{
-                left: `${arrowRelativeX}px`,
-                transform: 'translateX(-50%)'
-              }}
-            ></div>
-
-            <div className="font-bold border-b border-gray-700 pb-2 mb-2 text-center text-sm">{hoveredDay.date}</div>
-            
-            {hoveredDay.data ? (
-              <div className="space-y-2">
-                <div className="flex justify-between items-center">
-                  <span className="text-gray-400">Phase</span>
-                  <span className="font-medium bg-gray-800 px-1.5 py-0.5 rounded text-[10px] border border-gray-700">
-                    {hoveredDay.data.cyclePhase.split(' ')[0]} D{hoveredDay.data.cycleDay}
-                  </span>
-                </div>
-                
-                <div className="grid grid-cols-2 gap-2 text-[10px]">
-                   <div>
-                     <p className="text-gray-400 mb-0.5">Predicted</p>
-                     <p className="font-mono">{hoveredDay.data.predictedWeight}kg</p>
-                     <p className="font-mono text-gray-500">{hoveredDay.data.predictedBodyFat}% Fat</p>
-                   </div>
-                   <div className="text-right">
-                     <p className="text-gray-400 mb-0.5">Actual</p>
-                     {hoveredDay.data.actualWeight ? (
-                       <>
-                          <p className={`font-mono font-bold ${hoveredDay.data.actualWeight <= hoveredDay.data.predictedWeight ? 'text-green-400' : 'text-amber-400'}`}>
-                            {hoveredDay.data.actualWeight}kg
-                          </p>
-                          <p className="font-mono text-gray-500">{hoveredDay.data.actualBodyFat ?? '-'}% Fat</p>
-                       </>
-                     ) : (
-                       <p className="text-gray-600">-</p>
-                     )}
-                   </div>
-                </div>
-
-                <div className="border-t border-gray-700 pt-2">
-                  <span className="text-gray-500 text-[10px] uppercase tracking-wider font-bold mb-1 block">Note</span>
-                  <p className="text-gray-300 italic leading-snug">
-                    {hoveredDay.data.note || 'No notes logged.'}
-                  </p>
-                </div>
-              </div>
-            ) : (
-              <div className="text-gray-500 italic text-center py-2">No data recorded for this day.</div>
-            )}
-          </div>
-        );
-      })()}
-
-      {/* History Log */}
-      <Card>
-        <div className="flex justify-between items-center mb-4">
-          <h3 className="text-sm font-semibold text-gray-500">History Log</h3>
+               {/* Notes */}
+               {(hoveredDay.data.note || hoveredDay.data.suggestion) && (
+                 <div className="pt-2 border-t border-gray-700 text-gray-400 italic leading-tight">
+                   {hoveredDay.data.note || hoveredDay.data.suggestion}
+                 </div>
+               )}
+            </div>
+          ) : (
+             <div className="text-gray-500 text-center">No data</div>
+          )}
         </div>
-        
+      )}
+
+      {/* Log List */}
+      <Card>
+        <h3 className="text-sm font-semibold text-gray-500 mb-4">History</h3>
         <div className="space-y-3">
           {(showAllLogs ? allLogs : allLogs.slice(0, 5)).map((log, idx) => (
             <div 
               key={idx} 
               onClick={() => onEditRecord(log.date)}
-              className="bg-white border border-gray-100 rounded-xl p-3 shadow-sm hover:border-gray-300 hover:shadow-md transition-all cursor-pointer relative pr-10"
+              className="flex justify-between items-center p-3 bg-white border border-gray-100 rounded-xl hover:shadow-md hover:border-gray-200 transition-all cursor-pointer active:scale-[0.99]"
             >
-              {/* Delete Button */}
-              <button 
-                 onClick={(e) => {
-                   e.stopPropagation();
-                   if (window.confirm('Delete this record?')) {
-                     onDeleteRecord(log.date);
-                   }
-                 }}
-                 className="absolute top-2 right-2 p-2 text-gray-300 hover:text-red-500 hover:bg-red-50 rounded-full transition-colors z-10"
-              >
-                <Trash2 size={16} />
-              </button>
-
-              {/* Row 1: Date */}
-              <div className="flex justify-between items-start mb-2">
-                 <span className="text-sm font-bold text-gray-900">{log.date}</span>
-                 <div className="flex flex-col items-end">
-                    <span className="text-sm font-bold text-gray-900">{log.actualWeight || '-'} <span className="text-xs text-gray-400 font-normal">kg</span></span>
-                 </div>
-              </div>
-
-              {/* Row 2: Cycle Pill + Note | Fat */}
-              <div className="flex justify-between items-end">
+               <div className="flex-1 min-w-0 mr-4">
+                 <div className="text-sm font-bold text-gray-900 mb-1">{log.date}</div>
                  <div className="flex items-center gap-2 overflow-hidden">
-                    <span className={`text-[9px] px-2 py-0.5 rounded-full font-medium whitespace-nowrap ${PHASES_CONFIG[log.cyclePhase].color} ${PHASES_CONFIG[log.cyclePhase].textColor}`}>
-                       {log.cyclePhase.split(' ')[0]} D{log.cycleDay}
+                    <span className={`flex-shrink-0 text-[10px] px-2 py-0.5 rounded font-medium ${PHASES_CONFIG[log.cyclePhase]?.color} ${PHASES_CONFIG[log.cyclePhase]?.textColor}`}>
+                      {log.cyclePhase} D{log.cycleDay}
                     </span>
-                    <span className="text-xs text-gray-500 truncate">{log.note || ''}</span>
+                    {log.note && (
+                      <span className="text-xs text-gray-400 truncate">
+                        {log.note}
+                      </span>
+                    )}
                  </div>
-                 <span className="text-xs font-medium text-gray-500 whitespace-nowrap">{log.actualBodyFat ? `${log.actualBodyFat}% Fat` : '-'}</span>
-              </div>
+               </div>
+               
+               <div className="flex items-center gap-3">
+                  <div className="text-right">
+                    <div className="text-sm font-bold text-gray-900">{log.actualWeight !== undefined && log.actualWeight !== null ? log.actualWeight : '-'} <span className="text-[10px] font-normal text-gray-400">kg</span></div>
+                    <div className="text-xs text-gray-400">{log.actualBodyFat !== undefined && log.actualBodyFat !== null ? log.actualBodyFat : '-'}%</div>
+                  </div>
+                  {/* Delete Button prevents bubbling */}
+                  <button 
+                    onClick={(e) => {
+                      e.stopPropagation(); 
+                      onDeleteRecord(log.date);
+                    }} 
+                    className="p-2 text-gray-300 hover:text-red-500 hover:bg-red-50 rounded-full transition-colors flex-shrink-0"
+                  >
+                    <Trash2 size={16}/>
+                  </button>
+               </div>
             </div>
           ))}
         </div>
-
         {!showAllLogs && allLogs.length > 5 && (
-          <button 
-            onClick={() => setShowAllLogs(true)}
-            className="w-full mt-4 text-center text-xs font-semibold text-gray-500 hover:text-black py-2 transition-colors"
-          >
-            View More
-          </button>
+          <button onClick={() => setShowAllLogs(true)} className="w-full mt-4 text-xs font-bold text-gray-400 hover:text-gray-600 transition-colors">View All</button>
         )}
       </Card>
     </div>

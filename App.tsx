@@ -7,9 +7,9 @@ import { Navigation } from './components/Navigation';
 import { CheckIn } from './components/CheckIn';
 import { Insights } from './components/Insights';
 import { GoalEditModal } from './components/GoalEditModal';
+import { Settings } from './components/Settings';
 
 // Mock date to simulate "Today" for demo purposes. 
-// In a real app, you would use new Date().toISOString().split('T')[0]
 const DEMO_TODAY = '2025-11-22'; 
 const STORAGE_KEY_RECORDS = 'cyclefit_records_v1';
 const STORAGE_KEY_GOAL = 'cyclefit_goal_v1';
@@ -41,7 +41,6 @@ export default function App() {
   // Modals
   const [checkInDate, setCheckInDate] = useState<string | null>(null);
   const [showGoalModal, setShowGoalModal] = useState(false);
-  
   const [todayCycleOverride, setTodayCycleOverride] = useState<{phase: CyclePhase, day: number} | null>(null);
 
   const todayDate = DEMO_TODAY; 
@@ -66,11 +65,10 @@ export default function App() {
     
     let record = existing;
     if (!record) {
-      // Generate a prediction for today if it doesn't exist
       const { predictedWeight, predictedFat } = getTodayPrediction(records, todayDate, goal);
       record = {
         date: todayDate,
-        cycleDay: 11, // Default fallback, likely overridden by logic
+        cycleDay: 11, 
         cyclePhase: CyclePhase.OVULATION,
         suggestion: "代谢峰值，汗出透彻",
         predictedWeight,
@@ -78,7 +76,6 @@ export default function App() {
       } as DailyRecord;
     }
 
-    // Apply temporary visual override if user changed cycle in UI but hasn't saved yet
     if (todayCycleOverride) {
       return {
         ...record,
@@ -93,12 +90,10 @@ export default function App() {
   const todayRecord = getOrGenerateToday();
 
   const handleSaveCheckIn = (date: string, data: { weight: number; fat: number; note: string; workout: boolean; fasting: boolean; cheat: boolean }) => {
-    // 1. Find existing or create new
     const existingRecord = records.find(r => r.date === date);
     
     let baseRecord = existingRecord;
     if (!baseRecord) {
-       // Create from scratch or today template
        if (date === todayDate) {
          baseRecord = todayRecord;
        } else {
@@ -124,12 +119,8 @@ export default function App() {
       isCheatDay: data.cheat
     };
 
-    // 2. Update Array
     const otherRecords = records.filter(r => r.date !== date);
     const updatedRecords = [...otherRecords, newRecord];
-
-    // 3. Recalculate FUTURE predictions based on this new data point
-    // This ensures if I change last week's weight, tomorrow's prediction updates
     const smartRecords = recalculateFuturePredictions(updatedRecords, goal);
 
     setRecords(smartRecords);
@@ -167,7 +158,6 @@ export default function App() {
     }));
   };
 
-  // Reset for Demo
   const handleResetData = () => {
     if(confirm("Are you sure you want to reset all data to default? This cannot be undone.")) {
       localStorage.clear();
@@ -194,28 +184,18 @@ export default function App() {
         {activeTab === 'insights' && (
           <Insights 
             data={records} 
+            goal={goal}
             onEditRecord={(date) => setCheckInDate(date)}
             onDeleteRecord={handleDeleteRecord}
           />
         )}
 
         {activeTab === 'settings' && (
-           <div className="p-8 space-y-8">
-             <h2 className="text-2xl font-bold">App Settings</h2>
-             <div className="bg-white rounded-xl p-4 shadow-sm">
-               <p className="text-sm text-gray-500 mb-4">Data Management</p>
-               <button 
-                 onClick={handleResetData}
-                 className="w-full py-3 text-red-600 font-bold border border-red-100 rounded-lg hover:bg-red-50"
-               >
-                 Reset All Data
-               </button>
-             </div>
-             <div className="text-center text-xs text-gray-400">
-               CycleFit v1.0.2 <br/>
-               Data stored locally on device.
-             </div>
-           </div>
+          <Settings 
+            goal={goal} 
+            onUpdateGoal={setGoal} 
+            onReset={handleResetData} 
+          />
         )}
       </div>
 
